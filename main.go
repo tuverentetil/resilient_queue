@@ -5,11 +5,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gookit/ini/v2"
 )
 
 type q struct {
@@ -21,6 +24,13 @@ type q struct {
 type TTLMap struct {
 	m map[string]*q
 	l sync.Mutex
+}
+
+type co struct {
+	host string
+	port int
+	wl   []string
+	lp   string
 }
 
 func New() (m *TTLMap) {
@@ -68,21 +78,41 @@ func (m *TTLMap) Get() []*q {
 }
 
 var m *TTLMap
+var conf *co
 
 func main() {
+	conf = getConfig()
 	m = New()
 	//coment it for debug mode
 	gin.SetMode(gin.ReleaseMode)
-	f, err := os.Create("/var/log/resilient_queue.log")
+	f, err := os.Create(conf.lp)
 	if err != nil {
-		fmt.Println("Log file /var/log/resilient_queue.log not writable!")
-		return
+		fmt.Println("Log file " + conf.lp + " not writable!")
+		//return
 	}
 	gin.DefaultWriter = io.MultiWriter(f)
 	router := gin.Default()
 	router.GET("/queue", getQueue)
 	router.POST("/queue", postQueue)
-	router.Run(":8080")
+	router.Run(fmt.Sprint(conf.host + ":" + strconv.Itoa(conf.port)))
+}
+
+func getConfig() (conf *co) {
+	cp, e := os.LookupEnv("QUEUE_CONF")
+	if !e {
+		ex, _ := os.Executable()
+		cp = fmt.Sprint(filepath.Dir(ex) + "config.ini")
+	}
+	err := ini.LoadExists(cp)
+	if err != nil {
+		panic(err)
+	}
+	conf = &co{}
+	conf.host = ini.String("host")
+	conf.port = ini.Int("port")
+	conf.lp = ini.String("log_path")
+	conf.wl = ini.Strings("white_list")
+	return conf
 }
 
 func getQueue(c *gin.Context) {
@@ -95,11 +125,20 @@ func postQueue(c *gin.Context) {
 	if err := c.BindJSON(&nq); err != nil {
 		return
 	}
-	s := m.Put(fmt.Sprint(nq.Queue+strconv.Itoa(nq.ID)), nq)
-	if s {
-		c.JSON(http.StatusCreated, nq)
-	} else {
-		c.AbortWithStatusJSON(423, gin.H{"message": "record exist"})
-	}
 
+	if contains(conf.wl, c.ClientIP()) {
+		s := m.Put(fmt.Sprint(nq.Queue+strconv.Itoa(nq.ID)), nq)
+		if s {
+			c.JSON(http.StatusCreated, nq)
+		} else {
+			c.AbortWithStatusJSON(423, gin.H{"message": "record exist"})
+		}
+	} else {
+		c.AbortWithStatusJSON(403, gin.H{"message": "Host not allowed"})
+	}
+}
+
+func contains(s []string, searchterm string) bool {
+	i := sort.SearchStrings(s, searchterm)
+	return i < len(s) && s[i] == searchterm
 }
