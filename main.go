@@ -94,6 +94,7 @@ func main() {
 	router := gin.Default()
 	router.GET("/queue", getQueue)
 	router.POST("/queue", postQueue)
+	//needs error handling if port is not INT
 	router.Run(fmt.Sprint(conf.host + ":" + strconv.Itoa(conf.port)))
 }
 
