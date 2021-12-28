@@ -88,7 +88,7 @@ func main() {
 	f, err := os.Create(conf.lp)
 	if err != nil {
 		fmt.Println("Log file " + conf.lp + " not writable!")
-		//return
+		return
 	}
 	gin.DefaultWriter = io.MultiWriter(f)
 	router := gin.Default()
