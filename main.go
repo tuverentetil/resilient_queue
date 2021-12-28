@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -11,10 +13,9 @@ import (
 )
 
 type q struct {
-	Timestamp int64  `json:"epoch"`
-	Queue     string `json:"queue"`
-	TTL       int64  `json:"TTL"`
-	ID        int    `json:"incident_id"`
+	Queue string `json:"queue"`
+	TTL   int64  `json:"TTL"`
+	ID    int    `json:"incident_id"`
 }
 
 type TTLMap struct {
@@ -70,9 +71,16 @@ var m *TTLMap
 
 func main() {
 	m = New()
+	//coment it for debug mode
+	gin.SetMode(gin.ReleaseMode)
+	f, err := os.Create("/var/log/resilient_queue.log")
+	if err != nil {
+		fmt.Println("Log file /var/log/resilient_queue.log not writable!")
+		return
+	}
+	gin.DefaultWriter = io.MultiWriter(f)
 	router := gin.Default()
 	router.GET("/queue", getQueue)
-	//router.GET("/albums/:id", getAlbumByID)
 	router.POST("/queue", postQueue)
 	router.Run(":8080")
 }
@@ -82,14 +90,8 @@ func getQueue(c *gin.Context) {
 }
 
 func postQueue(c *gin.Context) {
-	// fmt.Println(&c)
 	var nq q
-
-	//set default epoch value to Now
-
-	//newQueue.Timestamp = time.Now().UnixMilli()
 	// Call BindJSON to bind the received JSON to
-	// newQueue.
 	if err := c.BindJSON(&nq); err != nil {
 		return
 	}
